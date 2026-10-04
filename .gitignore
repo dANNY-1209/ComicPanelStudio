@@ -1,0 +1,13 @@
+# 系統與編輯器暫存檔 / OS & editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# 不要把漫畫作品放進工具的儲存庫 / never commit comic projects
+project.json
+projects/
+*_export/
+*.pdf

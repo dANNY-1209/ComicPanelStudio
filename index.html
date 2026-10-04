@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Panel Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo-32.png">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<link rel="apple-touch-icon" href="assets/logo-180.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="brand"><img src="assets/logo.svg" alt="" class="logo"><span data-i18n="appName"></span></span>
+    <div class="menu">
+      <button id="bFile"><span data-i18n="file"></span> ▾</button>
+      <div class="dd" id="fileMenu">
+        <button data-m="new"><span data-i18n="newProj"></span></button>
+        <button data-m="open"><span data-i18n="openFolder"></span><kbd>Ctrl+O</kbd></button>
+        <button data-m="openjson"><span data-i18n="openJson"></span></button>
+        <hr>
+        <button data-m="save"><span data-i18n="save"></span><kbd>Ctrl+S</kbd></button>
+        <button data-m="saveas"><span data-i18n="saveAs"></span><kbd>Ctrl+Shift+S</kbd></button>
+        <hr>
+        <button data-m="export"><span data-i18n="exportMenu"></span><kbd>Ctrl+E</kbd></button>
+      </div>
+    </div>
+    <span id="projName"></span>
+    <span class="sep"></span>
+    <button id="bUndo" data-i18n-title="undo">↶</button>
+    <button id="bRedo" data-i18n-title="redo">↷</button>
+    <span class="sep"></span>
+    <button id="tSelect" data-i18n="toolSelect" data-i18n-title="toolSelectTip"></button>
+    <button id="tKnife" data-i18n="toolKnife" data-i18n-title="toolKnifeTip"></button>
+    <span class="sep"></span>
+    <button id="bZoomOut">－</button><span id="zoomLbl">100%</span><button id="bZoomIn">＋</button>
+    <button id="bFit" data-i18n="fit"></button>
+    <span class="sep"></span>
+    <button id="bSnap" data-i18n="snap" data-i18n-title="snapTip"></button>
+    <span class="sep"></span>
+    <span id="layerBadge"></span>
+    <span class="grow"></span>
+    <span id="saveState">—</span>
+    <button id="bPreview" data-i18n="preview" data-i18n-title="previewTip"></button>
+    <button id="bExport" class="primary" data-i18n="exportBtn"></button>
+    <button id="bLang" title="中文 / English">EN</button>
+  </header>
+
+  <aside id="left">
+    <div class="top"><button id="bAddPage" data-i18n="addPage"></button><button id="bDupPage" data-i18n="dupPage"></button></div>
+    <div id="pages"></div>
+  </aside>
+
+  <main id="center">
+    <div id="work"><svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div id="hint"></div>
+    <div id="toast"></div>
+  </main>
+
+  <aside id="side">
+    <div id="layers"></div>
+    <div id="tabs">
+      <button data-tab="layout" data-i18n="tabLayout"></button>
+      <button data-tab="props" data-i18n="tabProps"></button>
+      <button data-tab="stickers" data-i18n="tabStickers"></button>
+      <button data-tab="assets" data-i18n="tabAssets"></button>
+      <button data-tab="page" data-i18n="tabPage"></button>
+      <button data-tab="settings" data-i18n="tabSettings"></button>
+    </div>
+    <div id="tabBody"></div>
+  </aside>
+</div>
+<div id="modal"><div class="box"><h3></h3><div class="mbody"></div><div class="mbtns"></div></div></div>
+<input type="file" id="fileImg" accept="image/*" multiple hidden>
+<input type="file" id="fileProj" accept=".json,application/json" hidden>
+<input type="file" id="fileDir" webkitdirectory hidden>
+<input type="file" id="fileFont" accept=".ttf,.otf,.woff,.woff2" multiple hidden>
+
+<script src="js/i18n.js"></script>
+<script src="js/text.js"></script>
+<script src="js/clipart.js"></script>
+<script src="js/stickers.js"></script>
+<script src="js/covers.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
