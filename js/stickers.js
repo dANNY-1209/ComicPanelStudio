@@ -241,7 +241,7 @@ const STK = {
               P(`M${f1(-w*0.42)} ${f1(h*0.1)}H${f1(w*0.42)}`, 'none', p.color, h*0.025),
               T(p.author, 0, h*0.3, { font:p.font, size:fitSize(p.author, w*0.8, h*0.3, 0.75), weight:700, fill:p.color })]; } },
   event: { cat:'cover', name:['活動新刊標','Event label'], size:W => [W*0.3, W*0.07],
-    props: () => ({ event:'C107', text:t('s_new'), color:'#e60012', dark:'#111111', fg:'#ffffff', font:'Noto Sans TC' }),
+    props: () => ({ event:'EVENT', text:t('s_new'), color:'#e60012', dark:'#111111', fg:'#ffffff', font:'Noto Sans TC' }),
     fields: ['event:text','text:text','color:color','dark:color','fg:color','font:font'],
     draw: it => { const p = it.p, w = it.w, h = it.h, lw = w*0.45;
       return [P(rectD(-w/2, -h/2, lw, h, 0), p.dark), P(rectD(-w/2 + lw, -h/2, w - lw, h, 0), p.color),

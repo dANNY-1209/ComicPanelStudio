@@ -4,6 +4,11 @@
 Openclipart 上的所有作品都以 **CC0 1.0（公眾領域）** 釋出：可以商用、可以修改、可以用在成人向作品，**不需要標註作者**。
 以下清單只是方便日後查詢來源，並非授權要求。
 
+> Openclipart 官方說明（https://openclipart.org/share）：
+> “We use the Creative Commons Zero 1.0 Public Domain License every time an artist uploads a piece of clipart to Openclipart … for anyone to use for any reason, even commercially.”
+
+本工具使用的字體不包含在此儲存庫中；字體在使用時才從 Google Fonts 載入（SIL Open Font License／Apache 2.0）。
+
 18 禁標誌的圓環與斜線比例，參考維基共享資源的公眾領域檔案
 [ProhibitionSign2.svg](https://commons.wikimedia.org/wiki/File:ProhibitionSign2.svg)（依 ISO 3864 禁止標誌比例）。
 

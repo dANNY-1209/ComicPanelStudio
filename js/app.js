@@ -1059,7 +1059,7 @@ function showGuides(T, s, box){
   const g = $('#guides'); if (!g) return;
   const z = ui.zoom, ext = 14/z; let h = '';
   const line = (x1, y1, x2, y2, gut) => h += `<line x1="${f1(x1)}" y1="${f1(y1)}" x2="${f1(x2)}" y2="${f1(y2)}" stroke="${gut ? '#22d3ee' : '#ff3bd4'}" stroke-width="${1.2/z}"${gut ? ` stroke-dasharray="${5/z} ${3/z}"` : ''}/>`;
-  // 像 Canva：吸附後，物件的左／中／右、上／中／下只要剛好對上別的物件，每一條都畫參考線
+  // 吸附後，物件的左／中／右、上／中／下只要剛好對上別的物件，每一條都畫參考線
   const drawAxis = (feats, targets, vertical) => {
     const done = new Set();
     for (const f of feats){

@@ -18,7 +18,7 @@ A browser-based comic / manga page layout tool — panels, images, speech bubble
 - **文字特效**：14 種一鍵樣式（熱血、霓虹、黃金…），漸層、雙層描邊、陰影光暈、立體、斜體、拱形、波浪。
 - **貼圖**：愛心、漫符、18 禁標誌、封面元素、集中線等；內建素材皆為 CC0。
 - **封面與封底**：16 款模板（單行本、同人誌、書腰、雜誌風、版權頁…）。
-- **對齊吸附**：拖曳時邊緣與中心自動對齊（類似 Canva），旋轉接近 90° 倍數時吸附。
+- **對齊吸附**：拖曳時邊緣與中心自動對齊並顯示參考線，旋轉接近 90° 倍數時吸附。
 - **跨頁複製**：Ctrl+C／Ctrl+V 跨頁貼上，或一次複製到多頁。
 - **預覽**：全螢幕黑底，所有頁面由上往下捲動閱讀。
 - **雙語介面**：繁體中文／English。
@@ -66,7 +66,7 @@ A browser-based comic / manga page layout tool — panels, images, speech bubble
 - **Text effects** — 14 one-click styles plus gradients, double outlines, shadow / glow, 3D extrude, slant, arch and wave.
 - **Stickers** — hearts, manga symbols, age-rating marks, cover elements, focus lines; bundled clip art is CC0.
 - **Covers** — 16 front / back cover templates.
-- **Smart snapping** — Canva-style edge and center alignment while dragging; rotation snaps near multiples of 90°.
+- **Smart snapping** — edge and center alignment with guide lines while dragging; rotation snaps near multiples of 90°.
 - **Copy across pages**, **full-screen scroll preview**, **Traditional Chinese / English UI**.
 
 ### Getting started
