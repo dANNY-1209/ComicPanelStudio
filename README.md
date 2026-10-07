@@ -37,6 +37,17 @@ A browser-based comic / manga page layout tool — panels, images, speech bubble
 - **專案資料夾**：「檔案 → 另存新檔」會存成一個資料夾：`project.json`（排版資料）＋ `images/`（圖片）＋ `fonts/`（匯入的字體）。方便備份、換電腦。
 - **匯出**：PDF（所有頁合成一份），或 PNG／JPG 圖片資料夾，可選 1～3 倍解析度。
 
+### 線上版（選用）：雲端專案、分享、多人即時編輯
+同一份程式也可以架成線上服務（`server/`），多了：
+- **Discord 登入**，誰能使用由白名單決定（`auth/whitelist.json`）。
+- **雲端專案**：每個專案有擁有者，可以分享給別人「可編輯」或「僅檢視」。
+- **多人即時編輯**：看得到誰在線上、誰在哪一頁、選了哪個物件；復原（Ctrl+Z）只會撤回自己的修改。
+- **版本紀錄**：編輯時大約每 10 分鐘自動留一份快照，可以還原。
+- 隨時可以把雲端專案**下載成本機專案資料夾**，用單機版繼續做；本機專案也能匯入成雲端專案。
+
+架設方式：複製 `.env.example` 成 `.env` 並填好、複製 `docker-compose.example.yml` 成 `docker-compose.yml`，然後 `docker compose up -d --build`。反向代理要轉發 WebSocket（`/ws`）。
+白名單格式：`auth/whitelist.json` → `{"discord":["Discord ID", …]}`；`auth/admins.json` 同格式（可看所有專案）；`auth/users.json` → `{"discord":{"ID":{"n":"名字","a":"頭像 hash"}}}`（分享名單顯示用，可省略）。
+
 ### 常用快捷鍵
 | 按鍵 | 功能 |
 |---|---|
@@ -75,6 +86,17 @@ Chrome / Edge are recommended because saving to and exporting into folders uses 
 
 ### Saving and exporting
 Work is auto-cached in the browser. **File → Save As** writes a project folder (`project.json` + `images/` + `fonts/`). Export to a single PDF, or to a folder of PNG / JPG pages at 1×–3×.
+
+### Online version (optional): cloud projects, sharing, real-time collaboration
+The same code can also run as an online service (`server/`), which adds:
+- **Discord login**, gated by a whitelist (`auth/whitelist.json`).
+- **Cloud projects** with an owner, shareable as **can edit** or **view only**.
+- **Real-time co-editing**: see who is online, which page they are on and what they selected; undo (Ctrl+Z) only reverts your own changes.
+- **Version history**: a snapshot about every 10 minutes while editing, restorable.
+- Download any cloud project as a **local project folder** for the offline app, or import a local project into the cloud.
+
+To host it: copy `.env.example` to `.env` and fill it in, copy `docker-compose.example.yml` to `docker-compose.yml`, then `docker compose up -d --build`. Your reverse proxy must pass WebSockets (`/ws`).
+Whitelist format: `auth/whitelist.json` → `{"discord":["Discord ID", …]}`; `auth/admins.json` same shape (can see every project); `auth/users.json` → `{"discord":{"ID":{"n":"name","a":"avatar hash"}}}` (optional, for the share list).
 
 ---
 

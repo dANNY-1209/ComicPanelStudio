@@ -11,3 +11,10 @@ project.json
 projects/
 *_export/
 *.pdf
+
+# 線上版：本機部署檔與資料 / online server: local deployment & data
+node_modules/
+data/
+.env
+docker-compose.yml
+setup-reverse-proxy.sh

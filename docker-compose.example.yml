@@ -1,0 +1,12 @@
+# 線上版部署範例。複製成 docker-compose.yml、填好 .env（參考 .env.example）後：
+#   docker compose up -d --build
+services:
+  comicstudio:
+    build: .
+    container_name: comicstudio
+    ports:
+      - "40003:3003"
+    volumes:
+      - ./data:/data              # 專案、圖片、版本快照；auth/ 放白名單
+    env_file: .env
+    restart: unless-stopped
