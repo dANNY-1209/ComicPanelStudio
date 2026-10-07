@@ -183,3 +183,6 @@ header .brand .logo{width:26px;height:26px;display:block}
 #preview .pvpage img{display:block;width:100%;height:auto;user-select:none}
 #preview .pvn{position:absolute;left:100%;top:0;margin-left:12px;color:#666;font-size:12px;white-space:nowrap}
 #preview .pvpages.gapless .pvn{display:none}
+
+/* ---- 上下層互換 ---- */
+.ttl .lswap{padding:2px 8px;font-size:11px;letter-spacing:0}

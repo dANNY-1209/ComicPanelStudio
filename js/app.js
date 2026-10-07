@@ -18,7 +18,7 @@ function setLang(l){
 /* ================= 狀態 ================= */
 let doc = null;
 const assets = new Map();            // id -> {id, blob, url, w, h, name, t}
-const ui = { page:0, layer:0, sel:null, selK:'p', selV:null, imgEdit:false, tool:'select', zoom:1, dimOther:false, tab:'layout', slant:0 };
+const ui = { page:0, layer:0, sel:null, selK:'p', selV:null, imgEdit:false, tool:'select', zoom:1, dimOther:false, tab:'layout', slant:0, polyN:5, polyStyle:'regular', polySeed:1 };
 const file = { dir:null, dirName:'', dirty:false };
 const PAD = 80;
 
@@ -452,7 +452,7 @@ function rng(label, f, val, min, max, step = 1){
 }
 function layersHTML(){
   const pg = curPage();
-  let h = `<div class="ttl"><span>${t('layers')}</span><label class="chk"><input type="checkbox" data-f="dim" ${ui.dimOther ? 'checked' : ''}>${t('dimOther')}</label></div>`;
+  let h = `<div class="ttl"><span>${t('layers')}</span><span style="display:flex;gap:8px;align-items:center">${isCoverFmt(pg) ? '' : `<button class="lswap" data-act="lswap" title="${t('lswapTip')}">⇅ ${t('lswap')}</button>`}<label class="chk"><input type="checkbox" data-f="dim" ${ui.dimOther ? 'checked' : ''}>${t('dimOther')}</label></span></div>`;
   if (isCoverFmt(pg)) h += `<p class="note" style="margin:0 0 6px">${t('coverFmtNote')}</p>`;
   for (const li of visibleLayers(pg).reverse()){
     const L = pg.layers[li];
@@ -464,6 +464,56 @@ function layersHTML(){
     </div>`;
   }
   return h;
+}
+/* ---------- 自訂角數的格子 ---------- */
+// 正多邊形（底邊平放），或每個角隨機偏移的不規則多邊形；拉伸到指定的方框大小
+function makePolyPts(n, cx, cy, w, h, irregular, seed){
+  const rnd = seeded(seed), pts = [];
+  for (let i = 0; i < n; i++){
+    const a = (90 + 180/n + i*360/n) * Math.PI/180 + (irregular ? (rnd() - 0.5) * 0.55 * (2*Math.PI/n) : 0);
+    const r = irregular ? 0.68 + rnd()*0.32 : 1;
+    pts.push([Math.cos(a)*r, Math.sin(a)*r]);
+  }
+  const b = bbox(pts);
+  return pts.map(([x, y]) => [Math.round((cx + (x - (b.x + b.w/2)) / (b.w || 1) * w)*10)/10, Math.round((cy + (y - (b.y + b.h/2)) / (b.h || 1) * h)*10)/10]);
+}
+// 改變頂點數量：增加時在最長的邊中間加點（形狀不變），減少時拿掉最不明顯的角（三角形面積最小的那個）
+function setVertexCount(pts, n){
+  pts = pts.map(p => p.slice()); n = Math.max(3, Math.round(n));
+  while (pts.length < n){
+    let bi = 0, bl = -1;
+    pts.forEach((a, i) => { const b = pts[(i + 1) % pts.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l > bl){ bl = l; bi = i; } });
+    const a = pts[bi], b = pts[(bi + 1) % pts.length];
+    pts.splice(bi + 1, 0, [Math.round((a[0] + b[0])*5)/10, Math.round((a[1] + b[1])*5)/10]);
+  }
+  while (pts.length > n){
+    let bi = 0, ba = Infinity;
+    pts.forEach((v, i) => { const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length];
+      const ar = Math.abs((a[0]*(v[1] - b[1]) + v[0]*(b[1] - a[1]) + b[0]*(a[1] - v[1])) / 2); if (ar < ba){ ba = ar; bi = i; } });
+    pts.splice(bi, 1);
+  }
+  return pts;
+}
+function polySecHTML(){
+  const prev = makePolyPts(ui.polyN, 0.5, 0.5, 1, 1, ui.polyStyle === 'irregular', ui.polySeed);
+  return `<div class="sec"><h4>${t('polyTitle')}</h4>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="tpl" style="width:76px;flex:none" data-act="addpoly">${miniPoly(prev)}${t('addPoly')}</div>
+        <div style="flex:1">
+          ${rng(t('polyN'), 'polyN', ui.polyN, 3, 16)}
+          <label class="row"><span>${t('polyStyle')}</span><select data-f="polyStyle">${['regular', 'irregular'].map(o => `<option value="${o}" ${ui.polyStyle === o ? 'selected' : ''}>${t('o_' + o)}</option>`).join('')}</select></label>
+        </div>
+      </div></div>`;
+}
+function addPolyPanel(){
+  const L = curLayer(); if (L.locked) return toast(t('locked'));
+  ensurePanelLayer();
+  const S = PS(), w = (S.w - 2*S.margin) * 0.45, h = w * 0.85, n = L.panels.length % 6;
+  pushHistory();
+  const p = makePanel(makePolyPts(ui.polyN, S.w/2 + n*30, S.h/2 + n*30, w, h, ui.polyStyle === 'irregular', ui.polySeed));
+  curLayer().panels.push(p); select(p.id, 'p');
+  if (ui.polyStyle === 'irregular') ui.polySeed = Math.floor(Math.random() * 1e9);   // 下一次換一個形狀
+  commit(); renderAll();
 }
 function miniPoly(pts, w = 40, h = 40){
   return `<svg viewBox="-2 -2 ${w+4} ${h+4}"><polygon points="${ptsStr(pts.map(p => [p[0]*w, p[1]*h]))}" fill="#e8ecf2" stroke="#111" stroke-width="1.5"/></svg>`;
@@ -501,7 +551,8 @@ function layoutTab(){
   const panelSec = `<div class="sec"><h4>${t('tplTitle', layerName(isCoverFmt() ? 0 : ui.layer))}</h4>
       <div class="tpls">${TEMPLATES.map((tp, i) => `<div class="tpl" data-act="tpl" data-i="${i}">${tplThumbCache[i]}${tn(tp.name)}</div>`).join('')}</div></div>
     <div class="sec"><h4>${t('addShape')}</h4>
-      <div class="shapes">${SHAPES.map((s, i) => `<div class="tpl" data-act="shape" data-i="${i}">${s.pts ? miniPoly(s.pts) : miniPoly(s.full === 'inner' ? [[.1,.1],[.9,.1],[.9,.9],[.1,.9]] : [[0,0],[1,0],[1,1],[0,1]])}${tn(s.name)}</div>`).join('')}</div></div>`;
+      <div class="shapes">${SHAPES.map((s, i) => `<div class="tpl" data-act="shape" data-i="${i}">${s.pts ? miniPoly(s.pts) : miniPoly(s.full === 'inner' ? [[.1,.1],[.9,.1],[.9,.9],[.1,.9]] : [[0,0],[1,0],[1,1],[0,1]])}${tn(s.name)}</div>`).join('')}</div></div>
+    ${polySecHTML()}`;
   const order = kind === 'cover' ? [coverSec('cover'), coverSec('back'), styleSec, panelSec]
               : kind === 'back' ? [coverSec('back'), coverSec('cover'), styleSec, panelSec]
               : [styleSec, panelSec, coverSec('cover'), coverSec('back')];
@@ -525,6 +576,7 @@ function panelProps(p){
       <div class="btns"><button data-act="icover">${t('cover')}</button><button data-act="icontain">${t('contain')}</button><button data-act="iflip">${t('flip')}</button><button data-act="irm" class="danger">${t('rmImg')}</button></div>`;
   } else h += `<div class="tip">${t('noImgTip')}</div>`;
   h += `</div>
+    <div class="sec"><h4>${t('pnTitle')}</h4>${rng(t('pnLabel'), 'pn', p.pts.length, 3, 24)}<p class="note">${t('pnTip')}</p><p class="note">${t('pscaleTip')}</p></div>
     <div class="sec"><h4>${t('splitTitle', PS().gutter)}</h4>
       ${rng(t('slant'), 'slant', ui.slant, -0.6, 0.6, 0.02)}
       <div class="btns"><button data-act="splith">${t('splitH')}</button><button data-act="splitv">${t('splitV')}</button></div>
@@ -1114,6 +1166,11 @@ function showImgGuides(p, g){
   el.innerHTML = g.xs.map(x => `<line x1="${f1(x)}" y1="${f1(b.y - ext)}" x2="${f1(x)}" y2="${f1(b.y1 + ext)}" stroke="#ff3bd4" stroke-width="${1.5/z}"/>`).join('')
                + g.ys.map(y => `<line x1="${f1(b.x - ext)}" y1="${f1(y)}" x2="${f1(b.x1 + ext)}" y2="${f1(y)}" stroke="#ff3bd4" stroke-width="${1.5/z}"/>`).join('');
 }
+function showScaleHint(p, f){
+  const g = $('#guides'); if (!g) return;
+  const z = ui.zoom, b = bbox(p.pts), label = Math.round(f*100) + '%', w = (label.length*8 + 14)/z, h = 22/z, x = b.x + b.w/2, y = b.y - 30/z;
+  g.insertAdjacentHTML('beforeend', `<rect x="${f1(x - w/2)}" y="${f1(y - h/2)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(h/2)}" fill="#4f8cff" opacity=".92"/><text x="${f1(x)}" y="${f1(y)}" font-size="${f1(13/z)}" font-family="Segoe UI, sans-serif" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central">${label}</text>`);
+}
 // 旋轉提示：在旋轉把手旁顯示目前角度；吸到 90° 倍數時變成粉紅色，並畫出水平／垂直參考線
 function showRotHint(it, snapped){
   const g = $('#guides'); if (!g) return;
@@ -1170,6 +1227,11 @@ svg.addEventListener('pointerdown', e => {
   // 格子的控制點
   if (h === 'v' && p){
     ui.selV = +tg.dataset.i; renderOverlay();
+    if (e.ctrlKey || e.metaKey){
+      // 等比縮放：記下原本的形狀與圖片，錨點在拖曳中依 Shift 決定（對角 or 中心）
+      drag = { type:'pscale', p, i:ui.selV, start:pt, orig:p.pts.map(v => v.slice()), oimg:p.img ? { ...p.img } : null, T:snapTargets(p.id) };
+      return;
+    }
     drag = { type:'vertex', p, i:ui.selV, start:pt, orig:p.pts[ui.selV].slice(), T:snapTargets(p.id) }; return;
   }
   if (h === 'is' && p && p.img){
@@ -1239,6 +1301,20 @@ svg.addEventListener('pointermove', e => {
       if (drag.oimg){ p.img.cx = drag.oimg[0] + dx + sx; p.img.cy = drag.oimg[1] + dy + sy; }
       updatePanelDOM(p); showGuides(drag.T, s, boxOfPts(p.pts)); break;
     }
+    case 'pscale': {
+      // 錨點：預設是外框上「離拖曳點最遠的那個角」（對角不動）；按住 Shift 改成以中心縮放
+      const b = boxOfPts(drag.orig), v0 = drag.orig[drag.i];
+      const anchor = e.shiftKey ? centroid(drag.orig) : [v0[0] < (b.x0 + b.x1)/2 ? b.x1 : b.x0, v0[1] < (b.y0 + b.y1)/2 ? b.y1 : b.y0];
+      const ax = v0[0] - anchor[0], ay = v0[1] - anchor[1], len2 = ax*ax + ay*ay || 1;
+      let target = pt;
+      const s = snapFind([pt[0]], [pt[1]], drag.T, e);           // 拖曳的那個角也可以對齊其他物件
+      target = [pt[0] + s.dx, pt[1] + s.dy];
+      // 縮放比例：把滑鼠位置投影到「錨點→原本的角」方向上
+      const f = clamp(((target[0] - anchor[0])*ax + (target[1] - anchor[1])*ay) / len2, 0.05, 20);
+      p.pts = drag.orig.map(([x, y]) => [Math.round((anchor[0] + (x - anchor[0])*f)*10)/10, Math.round((anchor[1] + (y - anchor[1])*f)*10)/10]);
+      if (drag.oimg && p.img){ p.img.cx = anchor[0] + (drag.oimg.cx - anchor[0])*f; p.img.cy = anchor[1] + (drag.oimg.cy - anchor[1])*f; p.img.s = drag.oimg.s * f; }
+      updatePanelDOM(p); showGuides(drag.T, s, boxOfPts(p.pts)); showScaleHint(p, f); break;
+    }
     case 'vertex': {
       const v = [drag.orig[0]+dx, drag.orig[1]+dy];
       const s = snapFind([v[0]], [v[1]], drag.T, e);
@@ -1265,6 +1341,8 @@ svg.addEventListener('pointermove', e => {
       if (it.k === 'text'){ const f = Math.hypot(...lp) / (Math.hypot(...drag.lp0) || 1); it.p.size = Math.max(4, Math.round(drag.s0 * f * 10)/10); }
       else if (def.uniform || e.shiftKey){ const f = Math.hypot(...lp) / (Math.hypot(...drag.lp0) || 1); it.w = Math.max(10, drag.w0*f); it.h = Math.max(10, drag.h0*f); }
       else { it.w = Math.max(20, Math.abs(lp[0])*2); it.h = Math.max(20, Math.abs(lp[1])*2); }
+      // 對話框：記住使用者主要調的是高度還是寬度（那個方向會被保留，另一個方向配合文字）
+
       if (it.k !== 'text' && !((it.r || 0) % 360)){
         // 對稱縮放：左右（上下）兩邊任一邊靠近其他物件的線就吸過去
         const s = snapFind([it.x - it.w/2, it.x + it.w/2], [it.y - it.h/2, it.y + it.h/2], drag.T, e);
@@ -1307,6 +1385,7 @@ svg.addEventListener('pointerup', () => {
     }
     return;
   }
+
   if (d.moved){ commit(); renderSide(); }
 });
 svg.addEventListener('dblclick', e => {
@@ -1795,6 +1874,17 @@ function syncField(f, v){ side.querySelectorAll(`[data-f="${f}"]`).forEach(x => 
 const imgOp = fn => () => { const p = selPanel(); if (!p || !p.img) return; pushHistory(); fn(p, assets.get(p.img.a)); commit(); renderStage(); renderSide(); };
 const actions = {
   layer: el => setLayer(+el.dataset.l),
+  // 下層與上層的內容互換（格子、圖片、貼圖），文字層不動
+  lswap: () => {
+    const pg = curPage(), [A, B] = pg.layers;
+    if (isCoverFmt(pg)) return;
+    if (A.locked || B.locked) return toast(t('locked'));
+    pushHistory();
+    for (const key of ['panels', 'items', 'tpl']){ const tmp = A[key]; A[key] = B[key]; B[key] = tmp; }
+    // 選取的東西跟著換到另一層，繼續保持選取
+    if (ui.sel && ui.layer !== TEXT_LAYER) ui.layer = 1 - ui.layer;
+    commit(); renderAll(); toast(t('lswapDone'));
+  },
   lvis:  el => { const L = curPage().layers[+el.dataset.l]; pushHistory(); L.visible = !L.visible; commit(); renderStage(); renderSide(); },
   llock: el => { const li = +el.dataset.l, L = curPage().layers[li]; pushHistory(); L.locked = !L.locked; if (li === ui.layer) deselect(); commit(); renderStage(); renderSide(); },
   lang:  el => setLang(el.dataset.l),
@@ -1803,6 +1893,7 @@ const actions = {
   lstyleall: () => { const k = layoutStyleOf(curPage()); applyLayoutStyle(k === 'custom' ? 'normal' : k, true); },
   cover: el => applyCover(COVERS[+el.dataset.i]),
   shape: el => addShape(SHAPES[+el.dataset.i]),
+  addpoly: addPolyPanel,
   sticker: el => addItem(el.dataset.k),
   tpreset: el => { const tp = TEXT_PRESETS[+el.dataset.i]; addItem('text', { p:tp.p(), r:tp.r }); },
   reseed: () => { const it = selItem(); if (!it) return; pushHistory(); it.p.seed = SEED(); commit(); updateItemDOM(it); },
@@ -1811,7 +1902,7 @@ const actions = {
     it.p.tails = [...(it.p.tails || []), newTail(it, n % 2 ? 0.3 : -0.3, 0.95)]; commit(); updateItemDOM(it); renderSide(); },
   tdel: el => { const it = selItem(); if (!it) return; pushHistory(); it.p.tails.splice(+el.dataset.t, 1); commit(); updateItemDOM(it); renderSide(); },
   tstraight: el => { const it = selItem(), tl = it && it.p.tails[+el.dataset.t]; if (!tl) return; pushHistory(); tl.cx = null; tl.cy = null; commit(); updateItemDOM(it); },
-  bfit: () => { const it = selItem(); if (!it) return; pushHistory(); [it.w, it.h] = bubbleFitSize(it); commit(); updateItemDOM(it); },
+  bfit: () => { const it = selItem(); if (!it) return; pushHistory(); [it.w, it.h] = bubbleFitSize(it); commit(); updateItemDOM(it); renderSide(); },
   fx: el => { const it = selItem(); if (!it || curLayer().locked) return; pushHistory(); it.p = applyFx(it.p, TEXT_FX[+el.dataset.i]); commit(); updateItemDOM(it); renderSide(); },
   splith: () => splitSel('h'), splitv: () => splitSel('v'),
   pdup: dupSel, pdel: deleteSel, vdel: deleteVertex, copyto: copyToPages,
@@ -1868,6 +1959,8 @@ side.addEventListener('input', e => {
     case 'dim': ui.dimOther = v; renderStage(); return;
     case 'lop': { const L = pg.layers[+el.dataset.l]; gesture('lop' + el.dataset.l); L.opacity = +v; renderStage(); commit(); return; }
     case 'slant': ui.slant = +v; syncField(f, v); return;
+    case 'polyN': ui.polyN = clamp(Math.round(+v), 3, 16); syncField(f, ui.polyN); { const t0 = side.querySelector('[data-act="addpoly"] svg'); if (t0) t0.outerHTML = miniPoly(makePolyPts(ui.polyN, 0.5, 0.5, 1, 1, ui.polyStyle === 'irregular', ui.polySeed)); } return;
+    case 'polyStyle': ui.polyStyle = v; renderSide(); return;
     // 全域設定
     case 'margin': case 'gutter': case 'stroke': gesture('s' + f); S[f] = +v; syncField(f, v); if (f === 'margin') renderStage(); commit(); return;
     case 'strokeColor': gesture('s' + f); S[f] = v; commit(); return;
@@ -1914,6 +2007,7 @@ side.addEventListener('input', e => {
   const a = p.img && assets.get(p.img.a);
   switch (f){
     case 'sw': p.sw = +v; syncField(f, v); renderStage(); break;
+    case 'pn': p.pts = setVertexCount(p.pts, +v); p.keep = undefined; ui.selV = null; syncField(f, p.pts.length); renderStage(); break;
     case 'sc': p.sc = v; renderStage(); break;
     case 'fillOn': p.fill = v ? (side.querySelector('[data-f="fillc"]').value) : 'none'; renderStage(); break;
     case 'fillc': if (p.fill !== 'none'){ p.fill = v; renderStage(); } break;

@@ -74,6 +74,25 @@ const fontStr = pr => `${pr.weight || 400} ${pr.size}px ${fontStack(pr.font)}`;
 const mctx = document.createElement('canvas').getContext('2d');
 const ROT_CH = new Set([...'「」『』（）()〈〉《》【】〔〕［］[]｛｝{}ー—―…‥〜～~-－=＝<>＜＞']);
 const PUNCT = new Set([...'、。，．,.']);
+/* 台灣繁體中文排法：全形標點放在自己那一格的正中央（直書、橫書都一樣）。
+   各字體的標點位置不同（有的在左下角），所以量出筆畫實際的中心，再移到格子中心。 */
+const CENTER_P = new Set([...'，。、；：！？．']);
+const WAVE = new Set([...'～〜']);   // 直書時轉成直向並置中的波浪號
+const HAS_CENTER_P = /[，。、；：！？．]/;
+const inkCache = new Map();
+// 回傳：以「水平置中、英文基線」畫這個字時，筆畫中心相對於畫字點的位移（依字級縮放）
+function inkOff(ch, pr){
+  const f = fontStr({ ...pr, size:100 }), key = f + '|' + ch;
+  if (!inkCache.has(key)){
+    mctx.font = f; mctx.textBaseline = 'alphabetic'; mctx.textAlign = 'center';
+    if ('letterSpacing' in mctx) mctx.letterSpacing = '0px';
+    const m = mctx.measureText(ch);
+    inkCache.set(key, { x:(m.actualBoundingBoxRight - m.actualBoundingBoxLeft)/2/100, y:(m.actualBoundingBoxDescent - m.actualBoundingBoxAscent)/2/100 });
+  }
+  const o = inkCache.get(key), s = +pr.size || 12;
+  return { x:o.x*s, y:o.y*s };
+}
+document.fonts && document.fonts.addEventListener('loadingdone', () => inkCache.clear());
 const SMALL = new Set([...'ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ']);
 const setLS = (c, v) => { if ('letterSpacing' in c) c.letterSpacing = v + 'px'; };
 /* ---------- 直書：中文與半形英數分開處理 ----------
@@ -84,7 +103,7 @@ const setLS = (c, v) => { if ('letterSpacing' in c) c.letterSpacing = v + 'px'; 
    英文的「...」會先換成刪節號「…」（直書時是直的 ⋮） */
 const HALF = /[\x21-\x7E]/;
 function vTokens(line, pr){
-  line = String(line).replace(/\.{2,}/g, m => '…'.repeat(Math.max(1, Math.round(m.length / 3))));
+  line = String(line).replace(/\.{2,}/g, m => '…'.repeat(Math.max(1, Math.round(m.length / 3)))).replace(/~/g, '～');   // 英文 ~ 在直書時換成全形 ～
   const ch = [...line], out = [], size = Math.max(1, +pr.size || 12);
   for (let i = 0; i < ch.length;){
     const c = ch[i];
@@ -104,7 +123,7 @@ function layoutText(pr){
   const size = Math.max(1, +pr.size || 12), lh = pr.lh || 1.25, ls = +pr.ls || 0;
   const lines = String(pr.text ?? '').split('\n'), g = [];
   const wave = +pr.wave || 0, arc = +pr.arc || 0;
-  const perChar = !pr.vert && (arc || wave || pr.fillType === 'alt');
+  const perChar = !pr.vert && (arc || wave || pr.fillType === 'alt' || HAS_CENTER_P.test(String(pr.text ?? '')));
   let W, H, ci = 0;
   if (pr.vert){
     const colW = size * lh, toks = lines.map(l => vTokens(l, pr));
@@ -118,10 +137,18 @@ function layoutText(pr){
         let gx = x, gy = y + tk.h/2, rot = 0, sx = 1;
         if (tk.k === 'ch'){
           const ch = tk.s; rot = ROT_CH.has(ch) ? 90 : 0;
-          // 句讀與小字靠在「遠離下一列」的那一側：往左排（傳統）放右上，往右排放左上
-          const side = pr.cols === 'ltr' ? -1 : 1;
-          if (PUNCT.has(ch)){ gx += side*size*0.32; gy -= size*0.32; }
-          else if (SMALL.has(ch)){ gx += side*size*0.08; gy -= size*0.08; }
+          if (CENTER_P.has(ch)){
+            // 全形標點：筆畫中心對準這一格的正中央
+            // 以中文字（國）的筆畫中心當基準，讓標點和前後的字對齊
+            const io = inkOff(ch, pr), ref = inkOff('國', pr); gx = x - io.x; gy = y + tk.h/2 + ref.y - io.y;
+          } else if (WAVE.has(ch)){
+            // 波浪號轉 90° 後，讓筆畫中心落在格子正中央（旋轉中心就是畫字點）
+            const io = inkOff(ch, pr), bo = baseOff(pr);
+            gx = x + (bo + io.y); gy = y + tk.h/2 - io.x;
+          } else if (SMALL.has(ch)){
+            // 小字（っ、ゃ…）靠在遠離下一列的那一側
+            const side = pr.cols === 'ltr' ? -1 : 1; gx += side*size*0.08; gy -= size*0.08;
+          }
         } else if (tk.k === 'rot') rot = 90;
         else if (tk.k === 'tcy'){
           // 縱中橫：太寬就橫向壓扁，塞進一格
@@ -155,6 +182,7 @@ function layoutText(pr){
         let gx = cx, gy = y, rot = 0;
         if (R){ const phi = (cx - lc) / R; gx = lc + R*Math.sin(phi); gy = y + sg*(R*(1 - Math.cos(phi)) - R*(1 - Math.cos(theta/2))/2); rot = sg*phi*180/Math.PI; }
         if (wave){ gy += wave*size*0.3*Math.sin(ci*0.9); rot += wave*18*Math.cos(ci*0.9); }
+        if (CENTER_P.has(ch)){ const io = inkOff(ch, pr), ref = inkOff('國', pr); gx -= io.x; gy += ref.y - io.y; }   // 全形標點：筆畫中心對準中文字的中心
         g.push({ s:ch, x:gx, y:gy, anchor:'middle', rot, ci:ci++ });
       });
     });
