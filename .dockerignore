@@ -1,0 +1,7 @@
+.git
+data
+server/node_modules
+server/test
+*.md
+.env
+docker-compose*.yml

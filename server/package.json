@@ -1,0 +1,9 @@
+{
+  "name": "comic-panel-studio-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online / multiplayer backend for Comic Panel Studio (optional — the app works offline without it)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test/sync-core.test.js && node test/server.test.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}

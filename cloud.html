@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Comic Panel Studio</title>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo-32.png">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<link rel="apple-touch-icon" href="assets/logo-180.png">
+<link rel="stylesheet" href="css/cloud.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/"><img src="assets/logo.svg" alt=""><span data-i="appName"></span></a>
+  <span class="grow"></span>
+  <button id="bLang" class="ghost">EN</button>
+  <div class="usermenu">
+    <button id="bUser" class="ghost"><span id="meAv"></span><span id="meName"></span> ▾</button>
+    <div class="dd" id="userDD">
+      <a id="lnSanctum" href="#" data-i="sanctum"></a>
+      <a href="https://github.com/dANNY-1209/ComicPanelStudio" target="_blank" rel="noopener" data-i="offline"></a>
+      <hr><a href="/auth/logout" data-i="logout"></a>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="toolbar">
+    <nav class="tabs" id="tabs"></nav>
+    <span class="grow"></span>
+    <input type="search" id="q" data-ip="search">
+    <button id="bImport" data-i="import"></button>
+    <button id="bNew" class="primary" data-i="new"></button>
+  </div>
+  <div id="grid" class="grid"></div>
+  <p id="empty" class="empty"></p>
+</main>
+<div id="modal"><div class="box"><h3></h3><div class="mbody"></div><div class="mbtns"></div></div></div>
+<div id="toast"></div>
+<script src="js/cloud.js"></script>
+</body>
+</html>

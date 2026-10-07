@@ -201,7 +201,7 @@ function imgCorners(im, a){
 /* ================= 歷史紀錄 ================= */
 let undoStack = [], redoStack = [], lastGesture = { k:null, t:0 };
 const snapshot = () => JSON.stringify({ name:doc.name, settings:doc.settings, pages:doc.pages });
-function pushHistory(){ undoStack.push(snapshot()); if (undoStack.length > 150) undoStack.shift(); redoStack = []; lastGesture.k = null; }
+function pushHistory(){ if (ONLINE) return Cloud.pushHist(); undoStack.push(snapshot()); if (undoStack.length > 150) undoStack.shift(); redoStack = []; lastGesture.k = null; }
 function gesture(k){ const now = Date.now(); if (lastGesture.k !== k || now - lastGesture.t > 1000) { pushHistory(); lastGesture.k = k; } lastGesture.t = now; }
 function restore(str){
   const o = JSON.parse(str); doc.settings = o.settings; doc.pages = o.pages;
@@ -209,8 +209,8 @@ function restore(str){
   if (!selPanel() && !selItem()) { ui.sel = null; ui.imgEdit = false; }
   ui.selV = null; commit(); renderAll();
 }
-function undo(){ if (!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); toast(t('undoT')); }
-function redo(){ if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); toast(t('redoT')); }
+function undo(){ if (ONLINE) return Cloud.undo(); if (!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); toast(t('undoT')); }
+function redo(){ if (ONLINE) return Cloud.redo(); if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); toast(t('redoT')); }
 
 /* ================= 瀏覽器暫存 (IndexedDB) ================= */
 let db;
@@ -233,6 +233,7 @@ function tx(store, mode, fn){
 }
 let cacheTimer = null;
 function scheduleCache(){
+  if (ONLINE) return;            // 線上版存在伺服器，不寫瀏覽器暫存
   clearTimeout(cacheTimer);
   cacheTimer = setTimeout(async () => {
     try {
@@ -245,18 +246,20 @@ async function addAsset(blob, name, id){
   const bmp = await createImageBitmap(blob);
   const a = { id:id || uid(), blob, name:name || 'image', w:bmp.width, h:bmp.height, t:Date.now() + assets.size };
   bmp.close();
-  await tx('assets', 'readwrite', s => s.put(a));
+  await storeAsset(a);
   a.url = URL.createObjectURL(blob);
   assets.set(a.id, a);
   return a;
 }
+// 線上版：圖片上傳到雲端專案；單機版：存在瀏覽器暫存
+const storeAsset = a => ONLINE ? Cloud.uploadAsset(a) : tx('assets', 'readwrite', s => s.put(a));
 async function removeAsset(id){
   const a = assets.get(id); if (!a) return;
-  await tx('assets', 'readwrite', s => s.delete(id));
+  if (ONLINE) Cloud.deleteAsset(id); else await tx('assets', 'readwrite', s => s.delete(id));
   URL.revokeObjectURL(a.url); assets.delete(id); bmpCache.delete(id);
 }
 async function clearAssets(){ for (const id of [...assets.keys()]) await removeAsset(id); }
-function commit(){ file.dirty = true; updateFileState(); scheduleCache(); refreshThumb(); }
+function commit(){ file.dirty = true; updateFileState(); scheduleCache(); refreshThumb(); if (ONLINE) Cloud.changed(); }
 
 /* ================= 字體 ================= */
 function loadWebFonts(){
@@ -264,7 +267,7 @@ function loadWebFonts(){
   let tm = null;
   document.fonts.addEventListener('loadingdone', () => {
     clearTimeout(tm);
-    tm = setTimeout(() => { if (drag) return; renderStage(); renderPages(); if (ui.tab === 'stickers' || ui.tab === 'layout') renderSide(); }, 250);
+    tm = setTimeout(() => { if (drag || !doc) return; renderStage(); renderPages(); if (ui.tab === 'stickers' || ui.tab === 'layout') renderSide(); }, 250);
   });
 }
 async function registerFont(f){
@@ -275,13 +278,15 @@ async function addFontFile(blob, name, id, tt){
   const ext = (/\.(ttf|otf|woff2?)$/i.exec(name) || ['', 'ttf'])[1].toLowerCase();
   const f = { id:id || uid(), name:name.replace(/\.(ttf|otf|woff2?)$/i, ''), blob, ext, t:tt || Date.now() };
   await registerFont(f);
-  await tx('fonts', 'readwrite', s => s.put({ id:f.id, name:f.name, blob:f.blob, ext:f.ext, t:f.t }));
+  if (ONLINE) await Cloud.uploadFont(f);
+  else await tx('fonts', 'readwrite', s => s.put({ id:f.id, name:f.name, blob:f.blob, ext:f.ext, t:f.t }));
   return f;
 }
 async function removeFont(id){
   const f = customFonts.get(id); if (!f) return;
   if (f.face) document.fonts.delete(f.face);
-  customFonts.delete(id); await tx('fonts', 'readwrite', s => s.delete(id));
+  customFonts.delete(id);
+  if (ONLINE) Cloud.deleteFont(id); else await tx('fonts', 'readwrite', s => s.delete(id));
 }
 async function clearFonts(){ for (const id of [...customFonts.keys()]) await removeFont(id); }
 
@@ -325,7 +330,7 @@ function renderStage(){
   const m = PSx.margin;
   body += `<rect id="marginGuide" x="${m}" y="${m}" width="${S.w - 2*m}" height="${S.h - 2*m}" fill="none" stroke="#4f8cff" stroke-opacity=".35" stroke-width="${1/ui.zoom}" stroke-dasharray="${8/ui.zoom} ${6/ui.zoom}" pointer-events="none"/>`;
   body += `<g id="overlay"><image id="ghost" opacity=".35" preserveAspectRatio="none" pointer-events="none" style="display:none"/>`
-        + `<g id="guides" pointer-events="none"></g><g id="handles"></g><line id="knife" stroke="#ff3b3b" stroke-dasharray="10 6" pointer-events="none" style="display:none"/></g>`;
+        + `<g id="peerSel" pointer-events="none"></g><g id="guides" pointer-events="none"></g><g id="handles"></g><line id="knife" stroke="#ff3b3b" stroke-dasharray="10 6" pointer-events="none" style="display:none"/></g>`;
   svg.innerHTML = `<defs>${defs}</defs>` + body;
   svg.classList.toggle('knife', ui.tool === 'knife');
   svg.classList.toggle('imgedit', ui.imgEdit);
@@ -333,6 +338,7 @@ function renderStage(){
   updateHint();
 }
 function sizeStage(){
+  if (!doc) return;
   const S = doc.settings;
   svg.style.width  = ((S.w + 2*PAD) * ui.zoom) + 'px';
   svg.style.height = ((S.h + 2*PAD) * ui.zoom) + 'px';
@@ -373,6 +379,7 @@ function renderOverlay(){
     });
   }
   hg.innerHTML = h;
+  if (ONLINE) Cloud.drawPeerSel();
 }
 function updatePanelDOM(p){
   const s = ptsStr(p.pts);
@@ -401,6 +408,7 @@ function updateHint(){
 }
 function updateFileState(){
   if (!doc) return;
+  if (ONLINE) return Cloud.fileState();
   $('#projName').textContent = doc.name || t('untitled');
   $('#projName').title = t('rename') + (file.dirName ? ' — ' + t('fileInfoDir', file.dirName) : '');
   const st = $('#saveState');
@@ -436,6 +444,7 @@ function renderPages(){
         <button data-pa="up" title="${t('moveUp')}">↑</button><button data-pa="down" title="${t('moveDown')}">↓</button><button data-pa="del" class="danger" title="${t('del')}">✕</button>
       </span></div>
     </div>`).join('');
+  if (ONLINE) Cloud.pageDots();
 }
 let thumbTimer = null;
 function refreshThumb(){
@@ -768,6 +777,7 @@ $('#modal').addEventListener('keydown', e => {
 
 /* ================= 操作 ================= */
 function select(id, kind = 'p'){
+  if (ONLINE) Cloud.noteSelect(id);
   if (ui.sel !== id){ ui.imgEdit = false; ui.selV = null; }
   ui.sel = id; ui.selK = kind;
   if (id && (ui.tab === 'layout' || ui.tab === 'stickers')) ui.tab = 'props';
@@ -1573,7 +1583,7 @@ document.addEventListener('paste', async e => {
 /* ================= 頁面繪製（匯出用） ================= */
 const bmpCache = new Map();
 async function getBitmap(id){
-  if (!bmpCache.has(id)) bmpCache.set(id, await createImageBitmap(assets.get(id).blob));
+  if (!bmpCache.has(id)){ const a = assets.get(id); bmpCache.set(id, await createImageBitmap(a.blob || await Cloud.blobOf(a))); }
   return bmpCache.get(id);
 }
 function tracePath(ctx, pts){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); }
@@ -1671,6 +1681,7 @@ async function syncFolder(dir, sub, entries, label){
   for (const n of existing) if (!needed.has(n) && /^[a-z0-9]{6,12}\.\w+$/.test(n)) { try { await d.removeEntry(n); } catch {} }
 }
 async function writeProjectTo(dir){
+  if (ONLINE) await Cloud.ensureBlobs();
   const all = [...assets.values()], fonts = [...customFonts.values()];
   await syncFolder(dir, 'images', all.map(a => [a.id + extOf(a), a.blob]), '');
   if (fonts.length) await syncFolder(dir, 'fonts', fonts.map(f => [f.id + '.' + f.ext, f.blob]), '');
@@ -1679,6 +1690,7 @@ async function writeProjectTo(dir){
     fonts.map(f => ({ id:f.id, name:f.name, ext:f.ext, t:f.t, file:'fonts/' + f.id + '.' + f.ext }))));
 }
 async function saveProject(){
+  if (ONLINE) return Cloud.saveNow();
   if (!hasFS) return saveLegacyJSON();
   if (!file.dir) return saveProjectAs();
   try {
@@ -1708,7 +1720,7 @@ async function saveProjectAs(){
         buttons:[{ label:t('cancel'), value:null }, { label:t('overwrite'), value:1, cls:'primary' }] });
       if (!c.value) return;
     }
-    doc.name = r.form.name.trim() || t('untitled');
+    if (!ONLINE) doc.name = r.form.name.trim() || t('untitled');   // 線上版的下載不改雲端專案名稱
     busy(t('saving'), '', 0);
     await writeProjectTo(dir);
     closeModal();
@@ -1719,6 +1731,7 @@ async function saveProjectAs(){
 }
 const blobToDataURL = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
 async function saveLegacyJSON(){
+  if (ONLINE){ await Cloud.ensureBlobs(); closeModal(); }
   const list = [], fl = [];
   for (const a of assets.values()) list.push({ id:a.id, name:a.name, w:a.w, h:a.h, t:a.t, data:await blobToDataURL(a.blob) });
   for (const f of customFonts.values()) fl.push({ id:f.id, name:f.name, ext:f.ext, t:f.t, data:await blobToDataURL(f.blob) });
@@ -1728,6 +1741,7 @@ async function saveLegacyJSON(){
 
 /* ================= 專案：開啟 / 新建 ================= */
 async function confirmDiscard(){
+  if (ONLINE) return Cloud.confirmReplace();
   if (!file.dirty) return true;
   const r = await modal({ title:t('file'), body:`<p>${t('discardQ')}</p>`,
     buttons:[{ label:t('cancel'), value:null }, { label:t('saveFirst'), value:'save' }, { label:t('discard'), value:'discard', cls:'primary' }] });
@@ -1744,7 +1758,7 @@ async function loadProject(o, getBlob, dirHandle, dirName){
     try {
       const blob = await get(r); if (!blob) throw 0;
       const a = { id:r.id, name:r.name, w:r.w, h:r.h, t:r.t || Date.now() + i, blob };
-      await tx('assets', 'readwrite', s => s.put(a)); a.url = URL.createObjectURL(blob); assets.set(a.id, a);
+      await storeAsset(a); a.url = URL.createObjectURL(blob); assets.set(a.id, a);
     } catch { missing++; }
     busy(t('openFolder'), r.name, ++i / Math.max(1, list.length + fl.length) * 100);
   }
@@ -1753,7 +1767,7 @@ async function loadProject(o, getBlob, dirHandle, dirName){
     catch { missing++; }
     busy(t('openFolder'), r.name, ++i / Math.max(1, list.length + fl.length) * 100);
   }
-  doc = normalizeDoc({ version:3, name:o.name || dirName || t('untitled'), settings:o.settings || {}, pages:o.pages });
+  doc = normalizeDoc({ version:3, name:(ONLINE && doc && doc.name) || o.name || dirName || t('untitled'), settings:o.settings || {}, pages:o.pages });
   file.dir = dirHandle || null; file.dirName = dirHandle ? dirName : ''; file.dirty = !dirHandle;
   undoStack = []; redoStack = []; ui.page = 0; ui.layer = 0; deselect(); tplThumbCache = null;
   closeModal(); scheduleCache(); fitZoom(); renderAll();
@@ -2273,6 +2287,7 @@ function toast(msg){ const el = $('#toast'); el.textContent = msg; el.style.opac
 (async function init(){
   applyStatic();
   loadWebFonts();
+  if (ONLINE) return Cloud.boot();
   try {
     db = await openDB();
     const recs = await tx('assets', 'readonly', s => s.getAll()) || [];
