@@ -40,24 +40,70 @@ function bubbleShapeD(p, w, h){
   }
 }
 // 尾巴的根部：從中心往控制點方向，落在橢圓邊緣稍微內側（被框的填色蓋住，所以看起來是從框長出來）
+/* ---------- 尾巴與框的接合 ----------
+   先算出框的實際外形（多邊形），找出尾巴從哪裡穿出框，
+   再沿著外框往兩側各取一段當尾巴根部的兩個點 → 根部一定貼在框的邊上，不會有翹起來的角。 */
+function bodyPoly(p, w, h){
+  const m = Math.min(w, h), ell = (rx, ry, n = 120) => Array.from({ length:n }, (_, i) => { const a = i/n*Math.PI*2; return [Math.cos(a)*rx, Math.sin(a)*ry]; });
+  switch (p.shape){
+    case 'rect':    return [[-w/2, -h/2], [w/2, -h/2], [w/2, h/2], [-w/2, h/2]];
+    case 'round': {
+      const r = Math.min(m * (p.rr ?? 30) / 100, w/2, h/2), pts = [], arc = (cx, cy, a0) => { for (let i = 0; i <= 8; i++){ const a = (a0 + i*90/8) * Math.PI/180; pts.push([cx + Math.cos(a)*r, cy + Math.sin(a)*r]); } };
+      arc(w/2 - r, -h/2 + r, -90); arc(w/2 - r, h/2 - r, 0); arc(-w/2 + r, h/2 - r, 90); arc(-w/2 + r, -h/2 + r, 180);
+      return pts;
+    }
+    case 'cloud':   return ell(w/2*0.97, h/2*0.97);
+    case 'spiky':   return spikyPts(w/2, h/2, Math.round(p.spikes || 14), 1 - (p.depth ?? 0.28), seeded(p.seed));
+    case 'wavy': {
+      const rnd = seeded(p.seed), pts = [];
+      for (let i = 0; i < 48; i++){ const a = i/48*Math.PI*2, k = 1 - rnd()*0.06; pts.push([Math.cos(a)*w/2*k, Math.sin(a)*h/2*k]); }
+      return pts;
+    }
+    case 'hexagon': { const q = Math.min(w*0.25, h*0.5); return [[-w/2 + q, -h/2], [w/2 - q, -h/2], [w/2, 0], [w/2 - q, h/2], [-w/2 + q, h/2], [-w/2, 0]]; }
+    case 'tech':    { const q = m*0.18; return [[-w/2 + q, -h/2], [w/2 - q, -h/2], [w/2, -h/2 + q], [w/2, h/2 - q], [w/2 - q, h/2], [-w/2 + q, h/2], [-w/2, h/2 - q], [-w/2, -h/2 + q]]; }
+    default:        return ell(w/2, h/2);
+  }
+}
+// 沿著外框走：累積長度、取某個位置的點
+function perimeter(pts){ const cum = [0]; for (let i = 0; i < pts.length; i++){ const a = pts[i], b = pts[(i + 1) % pts.length]; cum.push(cum[i] + Math.hypot(b[0] - a[0], b[1] - a[1])); } return cum; }
+function pointAtLen(pts, cum, s){
+  const T = cum[cum.length - 1]; s = ((s % T) + T) % T;
+  let i = 0; while (i < pts.length - 1 && cum[i + 1] < s) i++;
+  const a = pts[i], b = pts[(i + 1) % pts.length], seg = (cum[i + 1] - cum[i]) || 1, u = (s - cum[i]) / seg;
+  return [a[0] + (b[0] - a[0])*u, a[1] + (b[1] - a[1])*u];
+}
+// 從中心往 (dx,dy) 方向的射線，和外框最遠的交點（星形這種凹多邊形取最外側）
+function rayHit(pts, cum, dx, dy){
+  let best = null;
+  for (let i = 0; i < pts.length; i++){
+    const a = pts[i], b = pts[(i + 1) % pts.length], ex = b[0] - a[0], ey = b[1] - a[1], den = dx*ey - dy*ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = (a[0]*ey - a[1]*ex) / den, u = (a[0]*dy - a[1]*dx) / den;
+    if (t > 0 && u >= 0 && u <= 1 && (!best || t > best.t)) best = { t, pt:[dx*t, dy*t], s:cum[i] + u*Math.hypot(ex, ey) };
+  }
+  return best;
+}
 function tailGeom(it, tl){
-  const w = it.w, h = it.h;
-  const cx = tl.cx ?? null, cy = tl.cy ?? null;
-  const dirx = cx != null ? cx : tl.tx, diry = cy != null ? cy : tl.ty, L = Math.hypot(dirx, diry);
+  const p = it.p, cxs = tl.cx ?? null, cys = tl.cy ?? null;
+  const dirx = cxs != null ? cxs : tl.tx, diry = cys != null ? cys : tl.ty, L = Math.hypot(dirx, diry);
   // 尖端剛好在中心（例如 Alt 拖出的第一瞬間）時先朝下，避免方向算不出來
   const ux = L > 1e-6 ? dirx/L : 0, uy = L > 1e-6 ? diry/L : 1;
-  const k = 1 / Math.sqrt((ux*ux)/(w*w/4) + (uy*uy)/(h*h/4)) * 0.85;
-  const ex = ux*k, ey = uy*k;
-  return { ex, ey, cx:cx != null ? cx : (ex + tl.tx)/2, cy:cy != null ? cy : (ey + tl.ty)/2 };
+  const P = bodyPoly(p, it.w, it.h), cum = perimeter(P), hit = rayHit(P, cum, ux, uy) || { pt:[ux*it.w/2, uy*it.h/2], s:0 };
+  const [ex, ey] = hit.pt;
+  return { ex, ey, s:hit.s, P, cum, cx:cxs != null ? cxs : (ex + tl.tx)/2, cy:cys != null ? cys : (ey + tl.ty)/2 };
 }
 function tailPath(it, tl){
-  const { ex, ey, cx, cy } = tailGeom(it, tl), bw = Math.min(it.w, it.h) * (tl.bw ?? 0.12);
-  const dx = cx - ex, dy = cy - ey, d = Math.hypot(dx, dy) || 1, nx = -dy/d, ny = dx/d;
-  const b1 = [ex + nx*bw, ey + ny*bw], b2 = [ex - nx*bw, ey - ny*bw];
-  const c1 = [cx + nx*bw*0.45, cy + ny*bw*0.45], c2 = [cx - nx*bw*0.45, cy - ny*bw*0.45];
-  return `M${f1(b1[0])} ${f1(b1[1])}Q${f1(c1[0])} ${f1(c1[1])} ${f1(tl.tx)} ${f1(tl.ty)}Q${f1(c2[0])} ${f1(c2[1])} ${f1(b2[0])} ${f1(b2[1])}Z`;
+  const g = tailGeom(it, tl), { ex, ey, cx, cy } = g, bw = Math.min(it.w, it.h) * (tl.bw ?? 0.12);
+  // 根部兩點：沿著外框往兩側各走 bw → 一定落在框的邊上
+  const b1 = pointAtLen(g.P, g.cum, g.s - bw), b2 = pointAtLen(g.P, g.cum, g.s + bw);
+  // 收尾點：往中心縮一點，讓尾巴和框的填色重疊（看不出接縫）
+  const el = Math.hypot(ex, ey) || 1, ins = Math.min(el*0.5, bw*1.5), I = [ex - ex/el*ins, ey - ey/el*ins];
+  // 彎曲控制點：左右各偏一點，給尾巴寬度；讓靠近 b1 的那一側接 b1
+  const dx = tl.tx - ex, dy = tl.ty - ey, d = Math.hypot(dx, dy) || 1, nx = -dy/d, ny = dx/d;
+  let c1 = [cx + nx*bw*0.45, cy + ny*bw*0.45], c2 = [cx - nx*bw*0.45, cy - ny*bw*0.45];
+  if (Math.hypot(c1[0] - b1[0], c1[1] - b1[1]) > Math.hypot(c2[0] - b1[0], c2[1] - b1[1])) [c1, c2] = [c2, c1];
+  return `M${f1(I[0])} ${f1(I[1])}L${f1(b1[0])} ${f1(b1[1])}Q${f1(c1[0])} ${f1(c1[1])} ${f1(tl.tx)} ${f1(tl.ty)}Q${f1(c2[0])} ${f1(c2[1])} ${f1(b2[0])} ${f1(b2[1])}Z`;
 }
-// 思考泡泡式尾巴：沿著同一條曲線放 3 顆由大到小的圓
 function tailDots(it, tl){
   const { ex, ey, cx, cy } = tailGeom(it, tl), m = Math.min(it.w, it.h) * (tl.bw ?? 0.12) / 0.12;
   const q = tt => [(1-tt)*(1-tt)*ex + 2*(1-tt)*tt*cx + tt*tt*tl.tx, (1-tt)*(1-tt)*ey + 2*(1-tt)*tt*cy + tt*tt*tl.ty];
@@ -70,22 +116,44 @@ const bubbleVert = it => it.p.dir === 'v' || (it.p.dir !== 'h' && (it.p.dir === 
 const NOSTART = new Set([...'、。，．,.！？!?」』）)】〉》ー…‥～〜ぁぃぅぇぉっゃゅょァィゥェォッャュョ']);
 // 各形狀可以放字的內框比例
 const BUB_INNER = { oval:[0.68, 0.68], cloud:[0.64, 0.62], spiky:[0.56, 0.56], wavy:[0.66, 0.66], hexagon:[0.66, 0.8], tech:[0.84, 0.8], round:[0.84, 0.8], rect:[0.88, 0.84] };
+/* 直書換列（以寬度為優先）：
+   1. 先算框的寬度放得下幾列（maxCols）
+   2. 列的長度 L 取「放得進 maxCols 列的最短長度」與「框高（或整行長度，取較短）」兩者較大的那個
+      → 框夠高時一列寫到底；框太矮時不會切成一堆短列，而是把列拉長
+   3. 框的大小不會自動改變（放不下時由使用者自行調整）
+   回傳 { text, need }，need 是最長一列的高度 */
+function packCols(toks, cap){
+  const cols = []; let cur = [], h = 0;
+  for (const tk of toks){
+    // 換到下一列（標點、「??」這類不放在列首，跟著上一列）
+    if (cur.length && h + tk.h > cap + 0.5 && !NOSTART.has(tk.s[0]) && !/^[!?]/.test(tk.s)){ cols.push(cur); cur = []; h = 0; }
+    cur.push(tk); h += tk.h;
+  }
+  if (cur.length || !cols.length) cols.push(cur);
+  return cols;
+}
+const colsH = col => col.reduce((s, tk) => s + tk.h, 0);
+function wrapVertical(p, innerW, innerH){
+  const size = Math.max(1, +p.size || 12), lh = p.lh || 1.3;
+  const lines = String(p.text ?? '').split('\n').map(l => vTokens(l, p));
+  const maxCols = Math.max(1, Math.floor((innerW + size*lh*0.3) / (size*lh)));
+  const lineHs = lines.map(colsH), longest = Math.max(size, ...lineHs);
+  const minTok = Math.max(size, ...lines.flat().map(tk => tk.h));
+  const count = L => lines.reduce((n, ts) => n + packCols(ts, L).length, 0);
+  // 找出放得進 maxCols 列的最短列長（二分搜尋）
+  let lo = minTok, hi = Math.max(minTok, longest), Lw = hi;
+  if (count(hi) <= maxCols){ while (hi - lo > 1){ const mid = (lo + hi)/2; if (count(mid) <= maxCols) hi = mid; else lo = mid; } Lw = hi; }
+  const L = Math.max(Lw, Math.min(innerH, longest), minTok);
+  const cols = lines.flatMap(ts => ts.length ? packCols(ts, L) : [[]]);
+  return { text:cols.map(col => col.map(tk => tk.s).join('')).join('\n'), need:Math.max(size, ...cols.map(col => Math.min(colsH(col), L))) };   // 列尾懸掛的標點不算進需要的高度，免得框被誤判太矮而長高
+}
 function wrapBubbleText(p, vert, innerW, innerH){
+  if (vert) return wrapVertical(p, innerW, innerH);
   const out = [], size = Math.max(1, +p.size || 12), lh = p.lh || 1.3;
   for (const line of String(p.text ?? '').split('\n')){
     const ch = [...line];
     if (!ch.length){ out.push(''); continue; }
-    if (vert){
-      const toks = vTokens(line, p);
-      let cur = '', hsum = 0;
-      for (const tk of toks){
-        const fits = hsum + tk.h <= innerH + 0.5;
-        // 換到下一列（標點、「??」這類不放在列首，跟著上一列）
-        if (!fits && cur && !NOSTART.has(tk.s[0]) && !/^[!?]/.test(tk.s)){ out.push(cur); cur = ''; hsum = 0; }
-        cur += tk.s; hsum += tk.h;
-      }
-      if (cur) out.push(cur);
-    } else {
+    {
       mctx.font = fontStr(p); if ('letterSpacing' in mctx) mctx.letterSpacing = '0px';
       let cur = '';
       for (const c of ch){
@@ -95,19 +163,40 @@ function wrapBubbleText(p, vert, innerW, innerH){
       out.push(cur);
     }
   }
-  return out.join('\n');
+  return { text:out.join('\n'), need:out.length * size * lh };
 }
 function bubText(p, it, noWrap){
   const vert = it ? bubbleVert(it) : !!p.vert;
   let text = p.text;
-  if (it && p.wrap !== false && !noWrap){ const k = BUB_INNER[p.shape] || [0.7, 0.7]; text = wrapBubbleText(p, vert, it.w*k[0], it.h*k[1]); }
+  if (it && p.wrap !== false && !noWrap){ const k = BUB_INNER[p.shape] || [0.7, 0.7]; text = wrapBubbleText(p, vert, it.w*k[0], it.h*k[1]).text; }
   return T(text, 0, 0, { font:p.font, size:p.size, weight:p.weight, fill:p.color, vert, lh:p.lh, align:p.align, cols:p.cols });
 }
 // 依文字大小，算出每種形狀需要的框大小
+/* 依文字算出好看的框大小：
+   直書 → 試 1～12 列，挑「高約為寬的 1.7 倍」的那一種；橫書 → 試 1～12 行，挑「寬約為高的 1.6 倍」的那一種。
+   換行用的規則和畫面上一樣，所以算出來的框剛好裝得下。 */
 function bubbleFitSize(it){
-  const p = it.p, L = layoutText({ ...bubText(p, it, true), x:0, y:0 }), pad = p.size * 0.9;
-  const k = { oval:[1.45, 1.6], cloud:[1.55, 1.75], spiky:[1.7, 1.9], wavy:[1.45, 1.6], hexagon:[1.35, 1.3], tech:[1.15, 1.25], round:[1.12, 1.2], rect:[1.08, 1.15] }[p.shape] || [1.4, 1.5];
-  return [Math.round(L.W*k[0] + pad), Math.round(L.H*k[1] + pad)];
+  const p = it.p, k = BUB_INNER[p.shape] || [0.7, 0.7], size = +p.size || 12, lh = p.lh || 1.3, pad = size * 0.9;
+  const vert = bubbleVert(it), best = { score:Infinity, w:it.w, h:it.h };
+  const consider = (w, h, target) => { const s = Math.abs(Math.log((h / w) / target)); if (s < best.score) Object.assign(best, { score:s, w, h }); };
+  if (vert){
+    const lines = String(p.text ?? '').split('\n').map(l => vTokens(l, p));
+    const total = lines.reduce((s, ts) => s + colsH(ts), 0), minTok = Math.max(size, ...lines.flat().map(tk => tk.h));
+    for (let n = 1; n <= 12; n++){
+      const L = Math.max(minTok, total / n), cols = lines.flatMap(ts => ts.length ? packCols(ts, L) : [[]]);
+      const need = Math.max(size, ...cols.map(col => Math.min(colsH(col), L)));
+      consider(cols.length * size * lh / k[0] + pad, need / k[1] + pad, 1.7);
+    }
+  } else {
+    mctx.font = fontStr(p); if ('letterSpacing' in mctx) mctx.letterSpacing = '0px';
+    const lines = String(p.text ?? '').split('\n'), widest = Math.max(size, ...lines.map(l => mctx.measureText(l).width));
+    for (let n = 1; n <= 12; n++){
+      const target = Math.max(size * 2, widest / n), r = wrapBubbleText(p, false, target, Infinity), rows = r.text.split('\n');
+      const w = Math.max(...rows.map(l => mctx.measureText(l).width));
+      consider(w / k[0] + pad, rows.length * size * lh / k[1] + pad, 1 / 1.6);
+    }
+  }
+  return [Math.round(best.w), Math.round(best.h)];
 }
 // 聯集外框技巧：先畫兩倍寬的描邊，再用填色蓋掉內側 → 多個形狀看起來是同一個輪廓
 function unionShapes(ds, p, dash){
