@@ -102,6 +102,16 @@ const count = (pg, expr, arg) => pg.evaluate(expr, arg);
     await A.keyboard.press('Control+y');
     await until(() => count(B, () => doc.pages[1].layers[2].items.length === 2), 5000, 'redo');
 
+    // ---- PR #1 的新功能也會同步：上下層互換 ----
+    const sig = pg => pg.evaluate(() => JSON.stringify(doc.pages[1].layers.slice(0, 2).map(L => L.panels.map(p => p.id))));
+    await A.click('.pg[data-i="1"]');
+    await A.click('#layers .lswap');
+    const swapped = await sig(A);
+    await until(async () => (await sig(B)) === swapped, 5000, 'B gets layer swap');
+    await A.click('#layers .lswap');      // 換回來，後面的步驟還要用下層的格子
+    const back = await sig(A);
+    await until(async () => (await sig(B)) === back, 5000, 'B gets swap back');
+
     // ---- 同時改同一個欄位：最後大家一致 ----
     await A.evaluate(() => { doc.settings.margin = 111; commit(); });
     await B.evaluate(() => { doc.settings.margin = 222; commit(); });
